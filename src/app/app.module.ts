@@ -1,75 +1,83 @@
-import { BrowserModule } from '@angular/platform-browser';
-import { NgModule, ChangeDetectionStrategy } from '@angular/core';
-import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import {BrowserModule} from '@angular/platform-browser';
+import {ChangeDetectionStrategy, Component, Injectable, NgModule, OnInit} from '@angular/core';
+import {FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule} from '@angular/forms';
+import {combineLatest, Observable, Subject} from 'rxjs';
+import {map, startWith} from 'rxjs/operators';
 
-import { Component, Injectable } from '@angular/core';
-import { FormGroup, FormBuilder, FormControl } from '@angular/forms';
-import { combineLatest, Observable, Subject } from 'rxjs';
-import { map, startWith, publishReplay, shareReplay } from 'rxjs/operators';
+interface KeyboardForm extends FormGroup {
+  controls: KeyboardForm.Controls;
 
-interface KeyboardFormValues {
-  keyboard?: Observable<{left: number, right: number}>;
-  
-  left: Observable<Number>;
-  right: Observable<Number>;
-}
-
-interface KeyboardFormControls {
-  keyboard?: FormGroup;
-  
-  left: FormControl;
-  right: FormControl;
+  setValue(value: KeyboardForm.Model, options?: {
+    onlySelf?: boolean;
+    emitEvent?: boolean;
+  }): void;
 }
 
 namespace KeyboardForm {
-  export type Seed = { [P in keyof KeyboardFormValues]: string };
+  /* tslint:disable:interface-over-type-literal */
+  export type Controls = {
+    left: FormControl;
+    right: FormControl;
+  };
+
+  export type Model = {
+    left: number;
+    right: number;
+  };
+  /* tslint:enable:interface-over-type-literal */
 }
 
-@Injectable()
+@Injectable({providedIn: 'root'})
 export class KeyboardFormFactory {
-  constructor(private fb: FormBuilder) { }
-  
-  createForm(seed?: KeyboardForm.Seed): { values: KeyboardFormValues, controls: KeyboardFormControls } {
-    const definition = seed || defaultFormSeed();    
-    const fg = this.fb.group(definition);
+  constructor(private fb: FormBuilder) {
+  }
 
-    return {values: createFormValues(fg), controls: createFormControls(fg)};
+  create(seed?: KeyboardForm.Model): KeyboardForm {
+    return this.fb.group(seed || defaultFormSeed()) as KeyboardForm;
   }
 }
 
-function createFormValues(fg: FormGroup): KeyboardFormValues {
-  const values = {} as KeyboardFormValues;
+@Component({
+  selector: 'app-root',
+  template: `
+    <form [formGroup]="form">
+      <input formControlName="left"> + <input formControlName="right"> = {{result | async}}
+             </form>
+             <br>
+    <button type="button" (click)="reset.next()">Reset</button>`,
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+export class AppComponent implements OnInit {
+  // Input
+  reset = new Subject<void>();
 
-  values.keyboard = fg.valueChanges
-                      .pipe(
-                        startWith(fg.value),
-                        shareReplay(1)
-                      );
-  for(let k in fg.value) {
-    values[k] = fg.get(k)
-                  .valueChanges
-                  .pipe(
-                    startWith(fg.get(k).value),
-                    shareReplay(1)
-                  );;
+  // Input & Output
+  form: KeyboardForm;
+
+  // Output
+  result: Observable<Number>;
+
+  constructor(private formFactory: KeyboardFormFactory) {}
+
+  ngOnInit() {
+    this.form = this.formFactory.create();
+
+    this.result = combineLatest(
+      this.form.controls.left.valueChanges,
+      this.form.controls.right.valueChanges,
+                  ).pipe(
+                    map(toSum),
+      startWith(0)
+                  );
+
+    this.reset.subscribe(() => {
+      this.form.setValue(defaultFormSeed());
+    });
   }
-
-  return values;
-}
-
-function createFormControls(fg: FormGroup): KeyboardFormControls {
-  const controls = {} as KeyboardFormControls;
-
-  controls.keyboard = fg;
-  for(let k in fg.value) {
-    controls[k] = fg.get(k);
-  }
-
-  return controls;
 }
 
 function toSum([lt, rt]) {
-   return Number(lt) + Number(rt);
+  return Number(lt) + Number(rt);
 }
 
 function defaultFormSeed() {
@@ -77,48 +85,6 @@ function defaultFormSeed() {
     left: 0,
     right: 0
   };
-}
-
-@Component({
-  selector: 'app-root',
-  template: `<form [formGroup]="keyboardControls.keyboard">
-               <input formControlName="left"> + <input formControlName="right"> = {{this.result | async}}
-             </form>
-             <br>
-             <button type="button" (click)="rest.next()">Reset</button>`,
-  // changeDetection: ChangeDetectionStrategy.OnPush
-})
-export class AppComponent {
-  // Input
-  rest = new Subject<void>();
-
-  // Input & Output
-  keyboardValues: KeyboardFormValues;
-  keyboardControls: KeyboardFormControls;
-  
-  // Output
-  result: Observable<Number>;
-  
-  constructor(private formFactory: KeyboardFormFactory) {}
-  
-  ngOnInit() {
-    const {values, controls} = this.formFactory.createForm();
-    
-    this.keyboardValues = values;
-    this.keyboardControls = controls;
-
-    this.result = combineLatest(
-                    this.keyboardValues.left,
-                    this.keyboardValues.right,
-                  ).pipe(
-                    map(toSum),
-                    shareReplay(1)
-                  );
-
-    this.rest.subscribe(() => {
-      this.keyboardControls.keyboard.setValue(defaultFormSeed());
-    })
-  } 
 }
 
 @NgModule({
@@ -130,7 +96,6 @@ export class AppComponent {
     FormsModule,
     ReactiveFormsModule
   ],
-  providers: [KeyboardFormFactory],
   bootstrap: [AppComponent]
 })
 export class AppModule { }
