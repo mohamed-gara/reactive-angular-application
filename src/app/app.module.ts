@@ -63,11 +63,11 @@ export class AppComponent implements OnInit {
     this.form = this.formFactory.create();
 
     this.result = combineLatest(
-      this.form.controls.left.valueChanges,
-      this.form.controls.right.valueChanges,
+                    this.form.controls.left.valueChanges,
+                    this.form.controls.right.valueChanges,
                   ).pipe(
                     map(toSum),
-      startWith(0)
+                    startWith(0)
                   );
 
     this.reset.subscribe(() => {
